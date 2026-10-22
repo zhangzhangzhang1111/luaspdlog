@@ -26,7 +26,7 @@ local logger = log.create("app", {
   type = "rotating", filename = "logs/app.log",
   max_size = 10485760, max_files = 3,
   level = "info", flush_on = "warn",
-  pattern = "[%Y-%m-%d %H:%M:%S.%e] [%n] [%l] %v",
+  pattern = "[%Y-%m-%d %H:%M:%S.%e] [%n] [%^%l%$] %v",
   async = true, overflow = "block"
 })
 ```
@@ -46,7 +46,7 @@ local logger = log.create("app", {
 |---|---|
 | `stdout`（默认）、`stderr` | `color=true`，控制终端着色 |
 | `file` | 必填 `filename`；`truncate=false`，默认追加 |
-| `rotating` | 必填 `filename`；`max_size=10485760`（字节，1–1 TiB），`max_files=3`（1–200000），`rotate_on_open=false` |
+| `rotating` | 必填 `filename`；`max_size=10485760`（字节，1–1 TiB，且不超过目标的 `size_t` 上限），`max_files=3`（1–200000），`rotate_on_open=false` |
 | `daily` | 必填 `filename`；`hour=0`（0–23），`minute=0`（0–59），`truncate=false`，`max_files=0`（0–65535，0 表示不限制保留数量） |
 | `null` | 丢弃输出，适合基准和条件禁用 |
 

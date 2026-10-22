@@ -215,7 +215,7 @@ int create(lua_State *L) {
     if (overflow != "block" && overflow != "overrun_oldest") fail("invalid overflow policy");
     auto level = field_level(L, 2, "level", spdlog::level::info);
     auto flush = field_level(L, 2, "flush_on", spdlog::level::off);
-    auto pattern = field_string(L, 2, "pattern", "[%Y-%m-%d %H:%M:%S.%e] [%n] [%l] %v");
+    auto pattern = field_string(L, 2, "pattern", "[%Y-%m-%d %H:%M:%S.%e] [%n] [%^%l%$] %v");
     std::vector<spdlog::sink_ptr> sinks;
     lua_getfield(L, 2, "sinks");
     if (lua_isnil(L, -1)) sinks.push_back(make_sink(L, 2, false));

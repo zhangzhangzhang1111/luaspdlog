@@ -41,6 +41,7 @@ local logger = log.create("app", {
 | `sinks` | 不提供时当前 options 同时作为单个 sink 的配置；提供时为 1–64 项的连续数组 |
 
 `sinks` 数组中的每个目标支持独立的 `level`（默认 trace）；顶层 `level` 只控制日志器过滤。单目标的 sink 保持 trace，使之后的 `set_level` 能自由调整日志器等级。
+配置表只读取自身字段，不执行 `__index` 元方法；如需继承配置，请先将字段合并到普通表。
 
 | sink `type` | 字段 |
 |---|---|

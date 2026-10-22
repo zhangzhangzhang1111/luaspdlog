@@ -112,6 +112,9 @@ def build(version, args):
         env = os.environ.copy()
         env["PATH"] = str(src / "src") + os.pathsep + str(build_dir) + os.pathsep + env.get("PATH", "")
         run("ctest", "--test-dir", build_dir, "--output-on-failure", env=env)
+        if os.name == "nt" and version == "5.1":
+            # 旧 Lua 的 longjmp 与 MSVC 异常展开交界需反复验证独立进程。
+            run("ctest", "--test-dir", build_dir, "--output-on-failure", "-R", "^integration$", "--repeat", "until-fail:10", env=env)
     if args.sanitize:
         return  # 检测器构建不可混入用户发布包。
     if package_dir.exists():
@@ -163,6 +166,8 @@ def build(version, args):
 
 
 def main():
+    if platform.system() == "Darwin":
+        os.environ.setdefault("MACOSX_DEPLOYMENT_TARGET", "13.0")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--lua", choices=[*VERSIONS, "all"], default="all")
     parser.add_argument("--target", help="发布包的目标标识；android/ios 标识会启用交叉编译")

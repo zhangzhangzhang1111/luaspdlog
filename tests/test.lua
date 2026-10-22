@@ -2,6 +2,11 @@
 local dir = assert(arg[1], "module directory required")
 package.cpath = dir .. "/?.so;" .. dir .. "/?.dll;" .. package.cpath
 local log = require("luaspdlog")
+local function checkpoint(name)
+  print("integration stage: " .. name)
+  io.stdout:flush()
+end
+checkpoint("module loaded")
 local function eq(a, b) assert(a == b, tostring(a) .. " ~= " .. tostring(b)) end
 local function rejects(fn)
   local ok, err = pcall(fn)
@@ -20,6 +25,10 @@ eq(console:name(), "default")
 console:set_level("off")
 log.info("suppressed")
 console:close()
+log.shutdown()
+checkpoint("console lifecycle")
+local raw_options = setmetatable({type="null"}, {__index=function() error("configuration metamethod must not run") end})
+log.create("raw-options", raw_options)
 log.shutdown()
 local path = "integration.log"
 local l = log.create("test", {type="file", filename=path, truncate=true, pattern="%v"})
@@ -44,6 +53,7 @@ assert(not content:find("filtered", 1, true))
 assert(content:find("warning", 1, true))
 assert(content:find("error", 1, true))
 eq(l:last_error(), nil)
+checkpoint("file levels and binary message")
 rejects(function() l.info({}, "invalid self") end)
 l:set_pattern("%v", "utc")
 l:flush_on("warn")
@@ -68,6 +78,7 @@ rejects(function() log.create("bad", {overflow="other"}) end)
 rejects(function() log.create("bad", {type="rotating", filename="x", max_size=0}) end)
 rejects(function() log.create("bad", {type="daily", filename="x", hour=24}) end)
 for i=1,1000 do rejects(function() l:set_level("invalid") end) end
+checkpoint("validation and exception conversion")
 eq(log.drop("test"), true)
 eq(log.get("test"), nil)
 l:warn("handle survives drop")
@@ -86,6 +97,7 @@ multi:info("one"); multi:error("two"); multi:flush()
 assert(read(a):find("one", 1, true)); assert(not read(b):find("one", 1, true))
 assert(read(b):find("two", 1, true))
 multi:close(); os.remove(a); os.remove(b)
+checkpoint("multiple sinks")
 local rotating = log.create("rotate", {type="rotating", filename="rotate.log", max_size=128, max_files=2, pattern="%v"})
 for i=1,100 do rotating:info(string.rep("x", 50)) end
 rotating:flush(); assert(#read("rotate.1.log") > 0)
@@ -95,6 +107,7 @@ local daily = log.create("daily", {type="daily", filename="daily.log", pattern="
 daily:info("daily"); daily:flush(); daily:close()
 local daily_path = "daily_" .. os.date("%Y-%m-%d") .. ".log"
 assert(read(daily_path):find("daily", 1, true)); os.remove(daily_path)
+checkpoint("file rotation")
 log.shutdown()
 local full = io.open("/dev/full", "rb")
 if full then
@@ -106,6 +119,7 @@ if full then
   disk:close(); log.shutdown()
 end
 log.init_thread_pool(64, 1)
+checkpoint("thread pool initialized")
 rejects(function() log.init_thread_pool(64) end)
 local async = log.create("async", {type="file", filename="async.log", truncate=true, async=true, pattern="%v"})
 for i=1,2000 do async:info("message-" .. i) end
@@ -115,6 +129,7 @@ log.shutdown() -- 等待后台线程写完，并使已移出注册表的句柄�
 local data = read("async.log")
 local _, count = data:gsub("message%-", "")
 eq(count, 2000)
+checkpoint("async drained")
 assert(data:find("message-2000", 1, true))
 rejects(function() async:flush() end)
 os.remove("async.log")
@@ -122,6 +137,7 @@ log.init_thread_pool(2, 1)
 local overrun = log.create("overrun", {type="null", async=true, overflow="overrun_oldest"})
 for i=1,10000 do overrun:info("stress") end
 log.shutdown()
+checkpoint("overrun drained")
 local reused = log.create("test", {type="null"})
 eq(reused:name(), "test")
 log.shutdown()

@@ -23,6 +23,8 @@ extern "C" {
 #include <string>
 #include <vector>
 
+extern "C" int luaspdlog_dispatch(lua_State *L);
+
 namespace {
 constexpr const char *logger_mt = "luaspdlog.logger";
 constexpr const char *state_mt = "luaspdlog.state";
@@ -58,27 +60,33 @@ Level level_arg(lua_State *L, int i) {
     fail("unknown log level: " + s);
 }
 int absolute(lua_State *L, int i) { return i > 0 ? i : lua_gettop(L) + i + 1; }
+void raw_field(lua_State *L, int t, const char *key) {
+    t = absolute(L, t);
+    // 配置读取不触发 __index，避免用户代码的 Lua 错误跨越 C++ RAII 栈帧。
+    lua_pushstring(L, key);
+    lua_rawget(L, t);
+}
 std::string field_string(lua_State *L, int t, const char *key, const std::string &fallback) {
-    lua_getfield(L, t, key);
+    raw_field(L, t, key);
     auto value = is_nil(L, -1) ? fallback : text_arg(L, -1);
     lua_pop(L, 1);
     return value;
 }
 double field_number(lua_State *L, int t, const char *key, double fallback, double lo, double hi) {
-    lua_getfield(L, t, key);
+    raw_field(L, t, key);
     auto value = is_nil(L, -1) ? fallback : number_arg(L, -1, lo, hi);
     lua_pop(L, 1);
     return value;
 }
 bool field_bool(lua_State *L, int t, const char *key, bool fallback) {
-    lua_getfield(L, t, key);
+    raw_field(L, t, key);
     if (!is_nil(L, -1) && lua_type(L, -1) != LUA_TBOOLEAN) fail(std::string(key) + " must be boolean");
     bool value = is_nil(L, -1) ? fallback : lua_toboolean(L, -1) != 0;
     lua_pop(L, 1);
     return value;
 }
 Level field_level(lua_State *L, int t, const char *key, Level fallback) {
-    lua_getfield(L, t, key);
+    raw_field(L, t, key);
     auto value = is_nil(L, -1) ? fallback : level_arg(L, -1);
     lua_pop(L, 1);
     return value;
@@ -217,7 +225,7 @@ int create(lua_State *L) {
     auto flush = field_level(L, 2, "flush_on", spdlog::level::off);
     auto pattern = field_string(L, 2, "pattern", "[%Y-%m-%d %H:%M:%S.%e] [%n] [%^%l%$] %v");
     std::vector<spdlog::sink_ptr> sinks;
-    lua_getfield(L, 2, "sinks");
+    raw_field(L, 2, "sinks");
     if (lua_isnil(L, -1)) sinks.push_back(make_sink(L, 2, false));
     else {
         if (!lua_istable(L, -1)) fail("sinks must be a nonempty array");
@@ -343,14 +351,12 @@ int last_error(lua_State *L) {
 int enable_backtrace(lua_State *L) { record(L)->logger->enable_backtrace(static_cast<size_t>(number_arg(L, 2, 1, 1048576))); return 0; }
 int disable_backtrace(lua_State *L) { record(L)->logger->disable_backtrace(); return 0; }
 int dump_backtrace(lua_State *L) { record(L)->logger->dump_backtrace(); return 0; }
-// lua_error 可能 longjmp；此处调用前，异常对象及临时字符串均已析构。
+// 只返回错误标记；lua_error 始终在 bridge.c 中执行，C++ 栈帧已全部返回。
 template<int (*F)(lua_State *)> int safe(lua_State *L) {
-    bool failed = false;
     try { return F(L); }
-    catch (const std::exception &e) { lua_pushstring(L, e.what()); failed = true; }
-    catch (...) { lua_pushliteral(L, "unknown C++ error"); failed = true; }
-    if (failed) return lua_error(L);
-    return 0;
+    catch (const std::exception &e) { lua_pushstring(L, e.what()); }
+    catch (...) { lua_pushliteral(L, "unknown C++ error"); }
+    return -1;
 }
 const luaL_Reg methods[] = {
     {"log", safe<log_message>}, {"trace", safe<log_level<0>>}, {"debug", safe<log_level<1>>},
@@ -368,18 +374,24 @@ const luaL_Reg functions[] = {
     {"trace", safe<default_level<0>>}, {"debug", safe<default_level<1>>}, {"info", safe<default_level<2>>},
     {"warn", safe<default_level<3>>}, {"error", safe<default_level<4>>}, {"critical", safe<default_level<5>>}, {nullptr, nullptr}
 };
+void push_callback(lua_State *L, lua_CFunction function, int context = 0) {
+    if (context) lua_pushvalue(L, context); else lua_pushnil(L);
+    auto *callback = static_cast<lua_CFunction *>(lua_newuserdata(L, sizeof(lua_CFunction)));
+    *callback = function;
+    lua_pushcclosure(L, luaspdlog_dispatch, 2);
+}
 void register_functions(lua_State *L, const luaL_Reg *entries) {
-    for (; entries->name; ++entries) { lua_pushcfunction(L, entries->func); lua_setfield(L, -2, entries->name); }
+    for (; entries->name; ++entries) { push_callback(L, entries->func); lua_setfield(L, -2, entries->name); }
 }
 int open(lua_State *L) {
     luaL_newmetatable(L, logger_mt);
-    lua_pushcfunction(L, safe<logger_gc>); lua_setfield(L, -2, "__gc");
-    lua_pushcfunction(L, safe<close>); lua_setfield(L, -2, "__close");
+    push_callback(L, safe<logger_gc>); lua_setfield(L, -2, "__gc");
+    push_callback(L, safe<close>); lua_setfield(L, -2, "__close");
     lua_pushliteral(L, "luaspdlog.logger"); lua_setfield(L, -2, "__metatable");
     lua_newtable(L); register_functions(L, methods); lua_setfield(L, -2, "__index");
     lua_pop(L, 1);
     luaL_newmetatable(L, state_mt);
-    lua_pushcfunction(L, safe<state_gc>); lua_setfield(L, -2, "__gc");
+    push_callback(L, safe<state_gc>); lua_setfield(L, -2, "__gc");
     lua_pop(L, 1);
     auto *b = static_cast<Box<State> *>(lua_newuserdata(L, sizeof(Box<State>)));
     b->value = nullptr;
@@ -388,7 +400,7 @@ int open(lua_State *L) {
     int context = lua_gettop(L);
     lua_newtable(L);
     for (auto *f = functions; f->name; ++f) {
-        lua_pushvalue(L, context); lua_pushcclosure(L, f->func, 1); lua_setfield(L, -2, f->name);
+        push_callback(L, f->func, context); lua_setfield(L, -2, f->name);
     }
     lua_pushliteral(L, "0.1.0"); lua_setfield(L, -2, "_VERSION");
     lua_pushliteral(L, "1.17.0"); lua_setfield(L, -2, "_SPDLOG_VERSION");
@@ -401,4 +413,4 @@ int open(lua_State *L) {
 }
 } // namespace
 
-extern "C" LUASPDLOG_API int luaopen_luaspdlog(lua_State *L) { return safe<open>(L); }
+extern "C" int luaspdlog_open_impl(lua_State *L) { return safe<open>(L); }

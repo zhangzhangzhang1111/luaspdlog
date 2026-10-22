@@ -40,7 +40,7 @@ local logger = log.create("app", {
 | `overflow` | `block`（队满等待），或 `overrun_oldest`（覆盖旧消息，可能丢日志） |
 | `sinks` | 不提供时当前 options 同时作为单个 sink 的配置；提供时为 1–64 项的连续数组 |
 
-每个 sink 支持 `level`（默认 trace）；单 sink 的 `level` 同时作为日志器等级，多 sink 的顶层等级与各 sink 等级分别生效。
+`sinks` 数组中的每个目标支持独立的 `level`（默认 trace）；顶层 `level` 只控制日志器过滤。单目标的 sink 保持 trace，使之后的 `set_level` 能自由调整日志器等级。
 
 | sink `type` | 字段 |
 |---|---|

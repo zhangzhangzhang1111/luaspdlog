@@ -84,6 +84,11 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install cmake==4.4.4 ninja==1.13.2
+      - name: Set up JDK for Android SDK tools
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '17'
       - name: Select Android NDK
         uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
       - name: Install pinned Android NDK

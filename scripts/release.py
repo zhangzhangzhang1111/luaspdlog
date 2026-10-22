@@ -3,6 +3,7 @@
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import subprocess
 import tarfile
@@ -18,6 +19,8 @@ MOBILE = ["android-arm64", "android-armv7", "android-x86_64", "android-x86", "io
 def main():
     """任何目标缺失、验证标识错误或文件名不符时拒绝公开 Release。"""
     out = ROOT / "dist"
+    if os.environ.get("GITHUB_REF_NAME", "v0.1.0") != "v0.1.0":
+        raise RuntimeError("tag must match the source version v0.1.0")
     expected = {(t, v) for t in DESKTOP for v in VERSIONS}
     expected |= {(t, v) for t in MOBILE for v in VERSIONS if v != "luajit"}
     found = set()

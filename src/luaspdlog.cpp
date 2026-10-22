@@ -166,7 +166,7 @@ int state_gc(lua_State *L) {
     b->value = nullptr;
     return 0;
 }
-spdlog::sink_ptr make_sink(lua_State *L, int i) {
+spdlog::sink_ptr make_sink(lua_State *L, int i, bool nested = true) {
     if (!lua_istable(L, i)) fail("sink configuration must be a table");
     int t = absolute(L, i);
     auto type = field_string(L, t, "type", "stdout");
@@ -199,7 +199,8 @@ spdlog::sink_ptr make_sink(lua_State *L, int i) {
             sink = std::make_shared<spdlog::sinks::daily_file_sink_mt>(path, h, m, truncate, files);
         } else fail("unknown sink type: " + type);
     }
-    sink->set_level(field_level(L, t, "level", spdlog::level::trace));
+    // 顶层 level 只控制日志器，避免单目标配置阻止后续下调日志等级。
+    sink->set_level(nested ? field_level(L, t, "level", spdlog::level::trace) : spdlog::level::trace);
     return sink;
 }
 int create(lua_State *L) {
@@ -217,7 +218,7 @@ int create(lua_State *L) {
     auto pattern = field_string(L, 2, "pattern", "[%Y-%m-%d %H:%M:%S.%e] [%n] [%l] %v");
     std::vector<spdlog::sink_ptr> sinks;
     lua_getfield(L, 2, "sinks");
-    if (lua_isnil(L, -1)) sinks.push_back(make_sink(L, 2));
+    if (lua_isnil(L, -1)) sinks.push_back(make_sink(L, 2, false));
     else {
         if (!lua_istable(L, -1)) fail("sinks must be a nonempty array");
         int t = absolute(L, -1);

@@ -1,0 +1,151 @@
+name: Build and release
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+jobs:
+  desktop:
+    name: ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-22.04, target: linux-glibc-x86_64}
+          - {os: ubuntu-22.04-arm, target: linux-glibc-arm64}
+          - {os: macos-15-intel, target: macos-x86_64}
+          - {os: macos-15, target: macos-arm64}
+          - {os: windows-2022, target: windows-x86_64, arch: x64}
+          - {os: windows-2022, target: windows-x86, arch: x86}
+          - {os: windows-11-arm, target: windows-arm64, arch: arm64}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '13.0'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
+        with:
+          arch: ${{ matrix.arch }}
+      - run: python -m pip install cmake==4.4.4 ninja==1.13.2
+      - run: python scripts/build.py --lua all --target ${{ matrix.target }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ matrix.target }}
+          path: dist/*.zip
+          if-no-files-found: error
+  musl:
+    name: ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-22.04, target: linux-musl-x86_64}
+          - {os: ubuntu-24.04-arm, target: linux-musl-arm64}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Native Alpine build and tests
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          docker run --rm -e TARGET -v "$PWD:/src" -w /src alpine:3.22 sh -ec '
+            apk add --no-cache python3 cmake ninja build-base linux-headers git
+            git config --global --add safe.directory /src
+            python3 scripts/build.py --lua all --target "$TARGET"
+          '
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: ${{ matrix.target }}
+          path: dist/*.zip
+          if-no-files-found: error
+  android:
+    name: android-${{ matrix.arch }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, armv7, x86_64, x86]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+      - run: python -m pip install cmake==4.4.4 ninja==1.13.2
+      - name: Select Android NDK
+        run: |
+          sdkmanager 'ndk;27.3.13750724'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.3.13750724" >> "$GITHUB_ENV"
+      - run: python scripts/build.py --lua all --target android-${{ matrix.arch }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: android-${{ matrix.arch }}
+          path: dist/*.zip
+          if-no-files-found: error
+  ios:
+    name: ${{ matrix.target }}
+    runs-on: macos-15
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [ios-arm64, ios-simulator-arm64, ios-simulator-x86_64]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+      - run: python -m pip install cmake==4.4.4 ninja==1.13.2
+      - run: python scripts/build.py --lua all --target ${{ matrix.target }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: ${{ matrix.target }}
+          path: dist/*.zip
+          if-no-files-found: error
+  sanitizers:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+      - run: python -m pip install cmake==4.4.4 ninja==1.13.2
+      - run: python scripts/build.py --lua 5.5 --sanitize
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [desktop, musl, android, ios, sanitizers]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: dist
+          merge-multiple: true
+      - run: python scripts/release.py
+      - name: Publish complete release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" --verify-tag --draft --title "luaspdlog $TAG" --notes-file docs/RELEASE.md
+          gh release upload "$TAG" dist/*
+          gh release edit "$TAG" --draft=false

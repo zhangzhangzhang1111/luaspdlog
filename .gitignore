@@ -1,0 +1,7 @@
+/build/
+/dist/
+/.deps/
+/.codegraph/
+__pycache__/
+*.rock
+.DS_Store

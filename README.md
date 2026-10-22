@@ -40,6 +40,8 @@ spdlog.shutdown()
 
 运行库要求：Linux glibc 包要求 glibc ≥2.35 及兼容的 libstdc++，musl 包要求兼容的 musl 及 libstdc++；macOS 使用系统 libc++；Windows 使用 MSVC 运行库（Visual C++ Redistributable 2015–2022 或兼容更新版）。Windows ARM64 的 LuaJIT 使用上游 ARM64 实现。LuaJIT GC64/自定义数值类型、Lua 自定义编译选项和修改后的 C API 需要使用匹配配置重新构建。Windows 的模块应链接宿主正在使用的同名 Lua DLL，不能在宿主里加载第二份独立 Lua 运行时。
 
+Android 32 位包为兼容 API 21–23，附带 Lua 的 `io.seek` 使用 32 位文件偏移（通常约 2 GiB 上限）；需要 Lua 标准库的大文件定位时请以 API 24+ 重新构建。该差异不改变 Lua C API 的数值类型。
+
 发布包包含模块、匹配解释器（桌面）、公共头文件、示例、许可证及 manifest。移动 SDK 包含 `lib/luaspdlog.a`、`lib/liblua.a` 与头文件。每个目标/ABI 独立 ZIP；Release 提供 `SHA256SUMS` 和包含依赖源码的源码包。
 
 ## 本地构建

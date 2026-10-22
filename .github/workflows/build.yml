@@ -85,6 +85,8 @@ jobs:
           python-version: '3.12'
       - run: python -m pip install cmake==4.4.4 ninja==1.13.2
       - name: Select Android NDK
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+      - name: Install pinned Android NDK
         run: |
           sdkmanager 'ndk;27.3.13750724'
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.3.13750724" >> "$GITHUB_ENV"

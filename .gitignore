@@ -5,3 +5,4 @@
 __pycache__/
 *.rock
 .DS_Store
+/docs/generated/

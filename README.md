@@ -83,11 +83,12 @@ python scripts/build.py --lua 5.4 --target ios-arm64
 python scripts/build.py --lua 5.4 --target ios-simulator-arm64
 ```
 
-使用 `LUASPDLOG_STATIC` 编译宿主并包含 `luaspdlog.h`；链接 `luaspdlog.a`、匹配的 Lua、C++ 标准库、线程库、数学库及平台需要的 `dl`。静态链接器必须包含 `luaopen_luaspdlog`。Lua 5.2+ 可调用 `luaL_requiref(L, "luaspdlog", luaopen_luaspdlog, 1)`，然后 `lua_pop(L, 1)`；Lua 5.1 将入口注册到 `package.preload`。Android 应写入应用可写目录；iOS 使用沙箱目录，不使用动态加载 `.so` 的方式。Android SDK 使用 `c++_static`，宿主请统一 C++ 运行库策略。所有库为 Release，无签名；iOS 由最终应用负责签名。
+使用 `LUASPDLOG_STATIC` 编译宿主并包含 `luaspdlog.h`；链接 `luaspdlog.a`、匹配的 Lua、C++ 标准库、线程库、数学库及平台需要的 `dl`。静态链接器必须包含 `luaopen_luaspdlog`。Lua 5.2+ 可调用 `luaL_requiref(L, "luaspdlog", luaopen_luaspdlog, 1)`，然后 `lua_pop(L, 1)`；Lua 5.1 将入口注册到 `package.preload`。Android 应写入应用可写目录；iOS 使用沙箱目录，不使用动态加载 `.so` 的方式。iOS 附带的 Lua 将 `os.execute` / `io.popen` 的子进程调用替换为不支持的错误（`ENOSYS`），适配代码位于 `cmake/ios_compat.h`。Android SDK 使用 `c++_static`，宿主请统一 C++ 运行库策略。所有库为 Release，无签名；iOS 由最终应用负责签名。
 
 ## API 和发布
 
 完整选项见 [API 文档](docs/API.md)，调用示例见 [examples](examples)。
+编辑器的 LuaCATS 类型描述位于 `meta/luaspdlog.lua`；它只供静态分析，不应加入运行时 `package.path`。安装 LDoc 后可在项目根目录运行 `ldoc .` 生成中文 API 文档。
 
 维护者推送 `v*` 标签会触发完整平台构建；所有构建及测试成功后，流水线先创建草稿 Release，上传 ZIP、离线源码包和校验文件，最后公开 Release。手动运行工作流仅生成 Actions artifacts。源码归档包含 spdlog/fmt/Lua/LuaJIT 许可证。
 

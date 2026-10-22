@@ -91,9 +91,11 @@ jobs:
           java-version: '17'
       - name: Select Android NDK
         uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
-      - name: Install pinned Android NDK
+        with:
+          packages: 'ndk;27.3.13750724'
+          log-accepted-android-sdk-licenses: false
+      - name: Set pinned Android NDK path
         run: |
-          sdkmanager 'ndk;27.3.13750724'
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.3.13750724" >> "$GITHUB_ENV"
       - run: python scripts/build.py --lua all --target android-${{ matrix.arch }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
